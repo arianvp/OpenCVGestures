@@ -39,11 +39,25 @@ def captureGoodFeaturesToTrack(frame):
     return cv2.goodFeaturesToTrack(frame,mask=None,**feature_params)
     
 
+def detectSkin():
+    while(cap.isOpened):
+        ret,frame = cap.read()
+        (w,h,_) = frame.shape
+        cv2.rectangle(frame,((w/2)-50, (h/2)-50),((w/2)+50, (h/2)+50),(255,0,0),3)
+        cv2.imshow("detect skin",frame)
 
+        frame = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
+        if cv2.waitKey(1) & 0xFF == ord('f'):
+            break
+
+
+    
 def subtractBG(bg):
     ret,frame = cap.read()
     dkernel = np.ones((20,20), np.uint8)
     ekernel = np.ones((4,4),np.uint8)
+    mask = cv2.inRange(cv2.cvtColor(frame,cv2.COLOR_BGR2HSV), (0,133,77),(255,173,127))
+    cv2.imshow("test",mask)
     frame = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
     frame = cv2.absdiff(bg,frame)
     frame = cv2.GaussianBlur(frame,(15,15),0)
@@ -55,7 +69,17 @@ def subtractBG(bg):
 color = np.random.randint(0,255,(100,3))
 
 
+# Skin Color
+Y_MIN  = 0
+Y_MAX  = 255
+Cr_MIN = 133
+Cr_MAX = 173
+Cb_MIN = 77
+Cb_MAX = 127
+
 def bgSubtractor():
+
+   # detectSkin()
     ret,f = cap.read()
     mask = np.zeros_like(f)
     bg = captureBG()
@@ -72,19 +96,27 @@ def bgSubtractor():
     i = 0
 
     state = "UNDEFINED"
+
+    moving = False
+    timer = 0
+    ultimate_dx = 0
+    ultimate_dy = 0
+    frame_count = 0
+
     while cap.isOpened:
 
-        if p0 == None: continue
         frame = subtractBG(bg)
 
         if cv2.waitKey(1) & 0xFF == ord('f'):
             old_frame = frame
             p0 = captureGoodFeaturesToTrack(frame)
             mask = np.zeros_like(mask)
-        if i % 100 == 0:
+        if i % 10 == 0:
             old_frame = frame
             p0 = captureGoodFeaturesToTrack(frame)
         i = i + 1
+        if p0 == None:
+            continue
         p1, st, err = cv2.calcOpticalFlowPyrLK(old_frame,frame, p0, None, **lk_params)
 
 
@@ -108,19 +140,53 @@ def bgSubtractor():
 
         cnt = min(len(good_new),len(good_old))
 
+        state = "UNDEFINED"
         if cnt != 0:
             dy = dy_tot / cnt
             dx = dx_tot / cnt
-            if dx > 15:
-                print "LEFT"
-            elif dx < -15:
-                print "RIGHT"
-            elif dy > 15:
-                print "ROTATE LEFT"
-            elif dy < -15:
-                print "ROTATE RIGHT"
+
+            if time.time() - timer < 0.5:
+                ultimate_dx += dx
+                ultimate_dy += dy
+                frame_count += 1
             else:
-                print "UNDEFINED"
+                if moving:
+                    final_dx = ultimate_dx / frame_count
+                    final_dy = ultimate_dy / frame_count
+                    # TODO detect move
+
+                    if final_dx > 5:
+                        print "LEFT"
+                    elif final_dx < -5:
+                        print "RIGHT"
+                    elif final_dy > 5:
+                        print "ROTATE_LEFT"
+                    elif final_dy < -5:
+                        print "ROTATE_RIGHT"
+
+                    print "dx:%f" % final_dx
+                    print "dy:%f" % final_dy
+                    moving = False
+
+                if abs(dx) > 15 or abs(dy) > 15:
+                    timer = time.time()
+                    ultimate_dx = 0
+                    ultimate_dy = 0
+                    frame_count = 0
+                    moving = True
+
+
+
+                
+
+
+
+
+     
+            
+          
+
+                # start timer
 
         img = cv2.add(frame,mask)
         cv2.imshow('frame',img)
