@@ -39,47 +39,59 @@ def captureGoodFeaturesToTrack(frame):
     return cv2.goodFeaturesToTrack(frame,mask=None,**feature_params)
     
 
-def detectSkin():
-    while(cap.isOpened):
-        ret,frame = cap.read()
-        (w,h,_) = frame.shape
-        cv2.rectangle(frame,((w/2)-50, (h/2)-50),((w/2)+50, (h/2)+50),(255,0,0),3)
-        cv2.imshow("detect skin",frame)
-
-        frame = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-        if cv2.waitKey(1) & 0xFF == ord('f'):
-            break
-
 
     
 def subtractBG(bg):
     ret,frame = cap.read()
-    dkernel = np.ones((20,20), np.uint8)
-    ekernel = np.ones((4,4),np.uint8)
-    mask = cv2.inRange(cv2.cvtColor(frame,cv2.COLOR_BGR2HSV), (0,133,77),(255,173,127))
-    cv2.imshow("test",mask)
+    dkernel = np.ones((16,16), np.uint8)
+    ekernel = np.ones((18,18),np.uint8)
     frame = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+#    cv2.imshow('1',frame)
     frame = cv2.absdiff(bg,frame)
+#    cv2.imshow('2',frame)
     frame = cv2.GaussianBlur(frame,(15,15),0)
-    ret,frame = cv2.threshold(frame, 30, 255, cv2.THRESH_BINARY)
+#    cv2.imshow('3',frame)
+    ret,frame = cv2.threshold(frame, 6, 255, cv2.THRESH_BINARY )
+
+#    cv2.imshow('4',frame)
     frame = cv2.erode(frame,ekernel,1)
+#    cv2.imshow('5',frame)
     frame = cv2.dilate(frame,dkernel,2)
+#    cv2.imshow('6',frame)
     return frame
 
 color = np.random.randint(0,255,(100,3))
 
 
-# Skin Color
-Y_MIN  = 0
-Y_MAX  = 255
-Cr_MIN = 133
-Cr_MAX = 173
-Cb_MIN = 77
-Cb_MAX = 127
+from subprocess import Popen, PIPE
+
+rotate_left = '''keydown Control_L
+keydown Shift_L
+key R
+keyup Control_L
+keyup Shift_L
+'''
+
+rotate_right = '''keydown Control_L
+key R
+keyup Control_L
+'''
+
+
+go_left = '''keydown Left
+keyup Left
+'''
+go_right = '''keydown Right
+keyup Right
+'''
+def keypress(sequence):
+    p = Popen(['xte'], stdin=PIPE)
+    p.communicate(input=sequence)
+
+
 
 def bgSubtractor():
 
-   # detectSkin()
     ret,f = cap.read()
     mask = np.zeros_like(f)
     bg = captureBG()
@@ -103,6 +115,7 @@ def bgSubtractor():
     ultimate_dy = 0
     frame_count = 0
 
+    kk = 0
     while cap.isOpened:
 
         frame = subtractBG(bg)
@@ -111,10 +124,13 @@ def bgSubtractor():
             old_frame = frame
             p0 = captureGoodFeaturesToTrack(frame)
             mask = np.zeros_like(mask)
-        if i % 10 == 0:
+        if kk % 20 == 0:
             old_frame = frame
+            mask = np.zeros_like(mask)
             p0 = captureGoodFeaturesToTrack(frame)
-        i = i + 1
+        
+
+        kk = kk + 1
         if p0 == None:
             continue
         p1, st, err = cv2.calcOpticalFlowPyrLK(old_frame,frame, p0, None, **lk_params)
@@ -151,24 +167,32 @@ def bgSubtractor():
                 frame_count += 1
             else:
                 if moving:
-                    final_dx = ultimate_dx / frame_count
-                    final_dy = ultimate_dy / frame_count
-                    # TODO detect move
+                    # we just went full DX. Never go full DX
+                    if frame_count != 0:
+                        final_dx = ultimate_dx / frame_count
+                        final_dy = ultimate_dy / frame_count
+                        # TODO detect move
+                        if final_dx > 30:
+                            print "LEFT"
+                            keypress(go_left)
+                        elif final_dx < -30:
+                            print "RIGHT"
+                            keypress(go_right)
+                        elif final_dy > 20:
+                            print "ROTATE_LEFT"
+                            keypress(rotate_left)
+                        elif final_dy < -20:
+                            print "ROTATE_RIGHT"
+                            keypress(rotate_right)
 
-                    if final_dx > 5:
-                        print "LEFT"
-                    elif final_dx < -5:
-                        print "RIGHT"
-                    elif final_dy > 5:
-                        print "ROTATE_LEFT"
-                    elif final_dy < -5:
-                        print "ROTATE_RIGHT"
-
-                    print "dx:%f" % final_dx
-                    print "dy:%f" % final_dy
+                        print "final_dx:%f" % final_dx
+                        print "final_dy:%f" % final_dy
                     moving = False
 
-                if abs(dx) > 15 or abs(dy) > 15:
+                if abs(dx) > 30 or abs(dy) > 30:
+
+                    print "dx:%f" % dx
+                    print "dy:%f" % dy
                     timer = time.time()
                     ultimate_dx = 0
                     ultimate_dy = 0
